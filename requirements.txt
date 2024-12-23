@@ -1,0 +1,4 @@
+g2p-mix
+modelscope
+torch
+transformers
