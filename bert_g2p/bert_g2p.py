@@ -21,6 +21,7 @@ import torch
 from g2p_mix import G2pMix
 from modelscope import snapshot_download
 from transformers import AutoModel, AutoTokenizer
+from wetext import Normalizer
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -28,7 +29,8 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class BertG2p:
     def __init__(self, model: str, device: str = "cpu"):
         self.device = device
-        self.g2p = partial(G2pMix(tn=True).g2p, sandhi=True)
+        self.normalize = Normalizer().normalize
+        self.g2p = partial(G2pMix(tn=False).g2p, sandhi=True)
 
         repo_dir = snapshot_download(model)
         self.tokenizer = AutoTokenizer.from_pretrained(repo_dir)
@@ -79,17 +81,18 @@ class BertG2p:
         word2phones = torch.tensor([len(word["phones"]) for word in words]).to(word_embeddings.device)
         return (word_embeddings / word2phones.unsqueeze(1)).repeat_interleave(word2phones, dim=0)
 
+    @torch.inference_mode()
     def __call__(self, texts: Union[str, List[str]], encode: bool = True, layer: int = -1):
         is_list = not isinstance(texts, str)
         if not is_list:
             texts = [texts]
-        with torch.inference_mode():
-            texts, bpes, bpe_ids = zip(*[self.tokenize(text) for text in texts])
-            words = list(map(BertG2p.attach_bpes, map(self.g2p, texts), bpes, bpe_ids))
-            if not encode:
-                return words if is_list else words[0]
-            bpe_embeddings = self.encode(texts, layer)
-            phone_embeddings = list(map(BertG2p.match, words, bpes, bpe_ids, bpe_embeddings))
-            if not is_list:
-                return words[0], bpe_embeddings[0], phone_embeddings[0]
-            return words, bpe_embeddings, phone_embeddings
+        texts = [self.normalize(text) for text in texts]
+        texts, bpes, bpe_ids = zip(*[self.tokenize(text) for text in texts])
+        words = list(map(BertG2p.attach_bpes, map(self.g2p, texts), bpes, bpe_ids))
+        if not encode:
+            return words if is_list else words[0]
+        bpe_embeddings = self.encode(texts, layer)
+        phone_embeddings = list(map(BertG2p.match, words, bpes, bpe_ids, bpe_embeddings))
+        if not is_list:
+            return words[0], bpe_embeddings[0], phone_embeddings[0]
+        return words, bpe_embeddings, phone_embeddings
