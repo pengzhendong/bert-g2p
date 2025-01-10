@@ -72,7 +72,7 @@ class BertG2p:
         return words
 
     @staticmethod
-    def match(words, bpes: List[str], bpe_ids: List[int], bpe_embeddings: torch.Tensor):
+    def match(words, bpe_embeddings: torch.Tensor):
         # sum the token(BPE) embeddings to word embedding
         bpe_embeddings = torch.split(bpe_embeddings, [len(word["bpes"]) for word in words], dim=0)
         word_embeddings = [torch.sum(embeddings, dim=0, keepdim=True) for embeddings in bpe_embeddings]
@@ -92,7 +92,7 @@ class BertG2p:
         if not encode:
             return words if is_list else words[0]
         bpe_embeddings = self.encode(texts, layer)
-        phone_embeddings = list(map(BertG2p.match, words, bpes, bpe_ids, bpe_embeddings))
+        phone_embeddings = list(map(BertG2p.match, words, bpe_embeddings))
         if not is_list:
             return words[0], bpe_embeddings[0], phone_embeddings[0]
         return words, bpe_embeddings, phone_embeddings
