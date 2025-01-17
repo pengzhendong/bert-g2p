@@ -81,6 +81,31 @@ class BertG2p:
         word2phones = torch.tensor([len(word["phones"]) for word in words]).to(word_embeddings.device)
         return (word_embeddings / word2phones.unsqueeze(1)).repeat_interleave(word2phones, dim=0)
 
+    @staticmethod
+    def insert_blank(words, phone_embeddings: torch.Tensor, blank: str = "▁"):
+        num_phones = 1
+        phones = [blank]
+        blank_indices = [0]
+        for idx, word in enumerate(words):
+            phones.extend(word["phones"])
+            num_phones += len(word["phones"])
+            if word["lang"] == "SYM" or (idx + 1 < len(words) and words[idx + 1]["lang"] == "SYM"):
+                continue
+            phones.append(blank)
+            blank_indices.append(num_phones)
+            num_phones += 1
+
+        device = phone_embeddings.device
+        dtype = phone_embeddings.dtype
+        hidden_size = phone_embeddings.size(-1)
+
+        embeddings = torch.zeros(num_phones, hidden_size, device=device)
+        mask = torch.ones(num_phones, dtype=torch.bool, device=device)
+        mask[blank_indices] = False
+        embeddings[mask] = phone_embeddings
+        embeddings[~mask] = torch.zeros(1, hidden_size, dtype=dtype)
+        return phones, embeddings
+
     @torch.inference_mode()
     def __call__(self, texts: Union[str, List[str]], encode: bool = True, layer: int = -1):
         is_list = not isinstance(texts, str)
